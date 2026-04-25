@@ -6,7 +6,7 @@ if (!isset($_SESSION['supplier_cart'])) { $_SESSION['supplier_cart'] = []; }
 
 // 1. RÉCUPÉRATION DES LISTES POUR LES MENUS DÉROULANTS
 $liste_f = $pdo->query("SELECT DISTINCT fournisseur_nom FROM fournisseur_achats")->fetchAll(PDO::FETCH_COLUMN);
-$liste_a = $pdo->query("SELECT DISTINCT name FROM products")->fetchAll(PDO::FETCH_COLUMN);
+$liste_a = $pdo->query("SELECT name, price, description FROM products WHERE is_deleted = 0")->fetchAll(PDO::FETCH_ASSOC);
 
 // --- LOGIQUE PHP IDENTIQUE ---
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_to_cart'])) {
@@ -172,12 +172,12 @@ $historique->execute([$date_s, $date_e]); $achats = $historique->fetchAll(PDO::F
         </div>
         <div class="mb-3">
             <label class="small text-info fw-bold">ARTICLE (Sélectionner ou Taper)</label>
-            <select name="article_nom" class="form-control select2-tags" required>
+            <select name="article_nom" id="article_select" class="form-control select2-tags" required>
                 <?php $e_name = $edit_item ? $edit_item['name'] : ''; ?>
                 <option value="<?= htmlspecialchars($e_name) ?>" selected><?= $e_name ? htmlspecialchars($e_name) : "Choisir l'article..." ?></option>
                 <?php foreach($liste_a as $a): ?>
-                    <?php if($a !== $e_name): ?>
-                        <option value="<?= htmlspecialchars($a) ?>"><?= htmlspecialchars($a) ?></option>
+                    <?php if($a['name'] !== $e_name): ?>
+                        <option value="<?= htmlspecialchars($a['name']) ?>" data-price="<?= $a['price'] ?>" data-cost="<?= $a['description'] ?>"><?= htmlspecialchars($a['name']) ?></option>
                     <?php endif; ?>
                 <?php endforeach; ?>
             </select>
@@ -246,19 +246,22 @@ $historique->execute([$date_s, $date_e]); $achats = $historique->fetchAll(PDO::F
             </form>
         </div>
         <table class="table align-middle">
-            <thead><tr><th>Fournisseur</th><th>Article</th><th>Dette</th><th>Statut</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Fournisseur</th><th>Article</th><th>Qté</th><th>P.A Unit</th><th>Total</th><th>Dette</th><th>Statut</th><th>Actions</th></tr></thead>
             <tbody>
                 <?php foreach($achats as $h): $dette = max(0, $h['montant_total'] - $h['montant_paye']); ?>
                 <tr>
                     <td><?= htmlspecialchars($h['fournisseur_nom']) ?></td>
                     <td><?= htmlspecialchars($h['article_nom']) ?></td>
+                    <td><?= $h['quantite'] ?></td>
+                    <td class="fw-bold text-warning"><?= number_format($h['prix_achat_unitaire'], 2) ?></td>
+                    <td><?= number_format($h['montant_total'], 2) ?></td>
                     <td class="text-danger fw-bold"><?= number_format($dette, 2) ?></td>
                     <td><span class="badge <?= $h['statut']=='Payé'?'bg-success':'bg-danger' ?>"><?= $h['statut'] ?></span></td>
                     <td>
                         <button class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#edit<?= $h['id'] ?>"><i class="bi bi-pencil"></i></button>
                         
                         <button onclick='printGroupedInvoice("<?= $h['fournisseur_nom'] ?>")' class="btn btn-sm btn-light"><i class="bi bi-printer"></i></button>
-                        <a href="?delete=<?= $h['id'] ?>" class="btn btn-sm btn-danger"><i class="bi bi-trash"></i></a>
+                        <a href="?delete=<?= $h['id'] ?>" class="btn btn-sm btn-danger" onclick="return confirm('Supprimer cet achat ?')"><i class="bi bi-trash"></i></a>
                     </td>
                 </tr>
                 
@@ -291,6 +294,17 @@ $(document).ready(function() {
         placeholder: "Sélectionner ou taper...",
         allowClear: true,
         width: '100%'
+    });
+
+    $('#article_select').on('select2:select', function (e) {
+        const data = e.params.data.element;
+        if (data) {
+            const price = $(data).data('price');
+            const cost = $(data).data('cost');
+            
+            if (price !== undefined) $('input[name="prix_vente_unitaire"]').val(price);
+            if (cost !== undefined) $('input[name="prix_achat_unitaire"]').val(cost);
+        }
     });
 });
 
