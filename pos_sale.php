@@ -27,12 +27,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['validate_sale'])) {
         if ($product && $product['stock'] >= $qty) {
             // Calcul du total au prorata de la remise pour cette ligne
             $line_total = ($price * $qty) - ($discount / count($product_ids));
-            
-            $sql = "INSERT INTO sales_boutique (product_id, product_name, quantity, discount, sell_price, total_amount, created_at) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?)";
+            $product_cost = (float)$product['description'];
+            $sql = "INSERT INTO sales_boutique (product_id, product_name, quantity, discount, sell_price, total_amount, product_cost, created_at) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
             $stmt_sale = $pdo->prepare($sql);
-            $stmt_sale->execute([$product['id'], $product['name'], $qty, $discount / count($product_ids), $price, $line_total, $exact_time]);
-
+            $stmt_sale->execute([$product['id'], $product['name'], $qty, $discount / count($product_ids), $price, $line_total, $product_cost, $exact_time]);
             $update = $pdo->prepare("UPDATE products SET stock = stock - ? WHERE id = ?");
             $update->execute([$qty, $p_id]);
         }
@@ -83,7 +82,7 @@ $end_date = $_GET['end_date'] ?? date('Y-m-d');
 
 $products_list = $pdo->query("SELECT * FROM products WHERE stock > 0 ORDER BY name ASC")->fetchAll(PDO::FETCH_ASSOC);
 
-$stmt_sales = $pdo->prepare("SELECT s.*, p.description as p_achat 
+$stmt_sales = $pdo->prepare("SELECT s.*, COALESCE(s.product_cost, CAST(p.description AS DECIMAL(10,2))) as p_achat 
                              FROM sales_boutique s 
                              LEFT JOIN products p ON s.product_id = p.id 
                              WHERE DATE(s.created_at) BETWEEN ? AND ? ORDER BY s.id DESC");

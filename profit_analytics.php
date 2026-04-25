@@ -423,6 +423,43 @@ $margin_rate = $revenue['total'] > 0 ? ($gross_profit / $revenue['total']) * 100
             font-size: 0.8rem;
             display: inline-block;
         }
+
+        /* --- OBFUSCATION CSS --- */
+        body.obfuscate-money .money-val {
+            filter: blur(20px);
+            user-select: none;
+            pointer-events: none;
+            opacity: 0.8;
+            transition: filter 0.3s ease, opacity 0.3s ease;
+        }
+        .money-val {
+            transition: filter 0.3s ease, opacity 0.3s ease;
+            display: inline-block;
+        }
+        .obfuscate-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            color: white;
+            border-radius: 50px;
+            padding: 8px 20px;
+            transition: all 0.3s ease;
+            font-family: 'Lexend', sans-serif;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+        }
+        .obfuscate-btn:hover {
+            background: rgba(15, 23, 42, 0.9);
+            border-color: #38bdf8;
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.4);
+        }
     </style>
 </head>
 <body>
@@ -430,7 +467,12 @@ $margin_rate = $revenue['total'] > 0 ? ($gross_profit / $revenue['total']) * 100
 <!-- Particules flottantes -->
 <div class="particles" id="particles"></div>
 
-<div class="header-section mb-4">
+<!-- Bouton Obfuscation -->
+    <button id="toggleMoneyBtn" class="obfuscate-btn shadow-lg">
+        <i class="bi bi-eye-slash" id="toggleMoneyIcon"></i> <span id="toggleMoneyText">Masquer</span>
+    </button>
+
+    <div class="header-section mb-4">
     <div class="container">
         <div class="text-center mb-4">
             <h1 class="fw-900 mb-2">
@@ -481,7 +523,7 @@ $margin_rate = $revenue['total'] > 0 ? ($gross_profit / $revenue['total']) * 100
             <h5 class="text-uppercase fw-bold text-white-50 mb-3">
                 <i class="bi bi-trophy"></i> Bénéfice Net à Partager
             </h5>
-            <h1 class="display-1 fw-900 text-neon-green mb-4"><?= number_format($net_total_boutique, 2) ?> DA</h1>
+            <h1 class="display-1 fw-900 text-neon-green mb-4"><span class="money-val"><?= number_format($net_total_boutique, 2) ?> DA</span></h1>
             
             <div class="row g-3">
                 <div class="col-md-6">
@@ -491,10 +533,10 @@ $margin_rate = $revenue['total'] > 0 ? ($gross_profit / $revenue['total']) * 100
                             <p class="small fw-bold text-info mb-2 text-uppercase">
                                 <i class="bi bi-wallet2"></i> Part Finale YASSER
                             </p>
-                            <h2 class="fw-900 mb-2 text-white"><?= number_format($final_yasser, 2) ?> DA</h2>
+                            <h2 class="fw-900 mb-2 text-white"><span class="money-val"><?= number_format($final_yasser, 2) ?> DA</span></h2>
                             <div class="d-flex justify-content-between small text-white-50">
-                                <span>Base: <?= number_format($base_share, 2) ?> DA</span>
-                                <span class="text-danger">- <?= number_format($total_yasser, 2) ?> DA</span>
+                                <span>Base: <span class="money-val"><?= number_format($base_share, 2) ?> DA</span></span>
+                                <span class="text-danger">- <span class="money-val"><?= number_format($total_yasser, 2) ?> DA</span></span>
                             </div>
                             <div class="progress-bar-custom">
                                 <div class="progress-fill" style="width: <?= $base_share > 0 ? ($final_yasser / $base_share * 100) : 0 ?>%"></div>
@@ -509,10 +551,10 @@ $margin_rate = $revenue['total'] > 0 ? ($gross_profit / $revenue['total']) * 100
                             <p class="small fw-bold text-warning mb-2 text-uppercase">
                                 <i class="bi bi-wallet2"></i> Part Finale AMINE
                             </p>
-                            <h2 class="fw-900 mb-2 text-white"><?= number_format($final_amine, 2) ?> DA</h2>
+                            <h2 class="fw-900 mb-2 text-white"><span class="money-val"><?= number_format($final_amine, 2) ?> DA</span></h2>
                             <div class="d-flex justify-content-between small text-white-50">
-                                <span>Base: <?= number_format($base_share, 2) ?> DA</span>
-                                <span class="text-danger">- <?= number_format($total_amine, 2) ?> DA</span>
+                                <span>Base: <span class="money-val"><?= number_format($base_share, 2) ?> DA</span></span>
+                                <span class="text-danger">- <span class="money-val"><?= number_format($total_amine, 2) ?> DA</span></span>
                             </div>
                             <div class="progress-bar-custom">
                                 <div class="progress-fill" style="width: <?= $base_share > 0 ? ($final_amine / $base_share * 100) : 0 ?>%"></div>
@@ -530,10 +572,10 @@ $margin_rate = $revenue['total'] > 0 ? ($gross_profit / $revenue['total']) * 100
             <div class="stat-card revenue-card">
                 <i class="bi bi-cash-stack metric-icon text-neon-purple"></i>
                 <small class="text-neon-purple fw-bold d-block">CHIFFRE D'AFFAIRES</small>
-                <h3 class="fw-900 text-white mb-1"><?= number_format($revenue['total'], 2) ?> DA</h3>
+                <h3 class="fw-900 text-white mb-1"><span class="money-val"><?= number_format($revenue['total'], 2) ?> DA</span></h3>
                 <small class="text-white-50">
-                    <i class="bi bi-shop"></i> <?= number_format($revenue['boutique'], 0) ?> | 
-                    <i class="bi bi-globe"></i> <?= number_format($revenue['online'], 0) ?>
+                    <i class="bi bi-shop"></i> <span class="money-val"><?= number_format($revenue['boutique'], 0) ?></span> | 
+                    <i class="bi bi-globe"></i> <span class="money-val"><?= number_format($revenue['online'], 0) ?></span>
                 </small>
             </div>
         </div>
@@ -541,7 +583,7 @@ $margin_rate = $revenue['total'] > 0 ? ($gross_profit / $revenue['total']) * 100
             <div class="stat-card">
                 <i class="bi bi-graph-up-arrow metric-icon text-neon-blue"></i>
                 <small class="text-neon-blue fw-bold d-block">PROFIT BRUT</small>
-                <h3 class="fw-900 text-white mb-1"><?= number_format($gross_profit, 2) ?> DA</h3>
+                <h3 class="fw-900 text-white mb-1"><span class="money-val"><?= number_format($gross_profit, 2) ?> DA</span></h3>
                 <small class="text-white-50">
                     Marge: <?= number_format($margin_rate, 1) ?>%
                 </small>
@@ -551,7 +593,7 @@ $margin_rate = $revenue['total'] > 0 ? ($gross_profit / $revenue['total']) * 100
             <div class="stat-card">
                 <i class="bi bi-receipt metric-icon text-info"></i>
                 <small class="text-info fw-bold d-block">CHARGES MAGASIN</small>
-                <h3 class="fw-900 text-info mb-1"><?= number_format($total_magasin, 2) ?> DA</h3>
+                <h3 class="fw-900 text-info mb-1"><span class="money-val"><?= number_format($total_magasin, 2) ?> DA</span></h3>
                 <small class="text-white-50"><?= count(array_filter($all_expenses, fn($e) => $e['admin_name'] == 'Magasin')) ?> décharges</small>
             </div>
         </div>
@@ -559,7 +601,7 @@ $margin_rate = $revenue['total'] > 0 ? ($gross_profit / $revenue['total']) * 100
             <div class="stat-card danger-card">
                 <i class="bi bi-person-x metric-icon text-neon-red"></i>
                 <small class="text-neon-red fw-bold d-block">DÉCH. AMINE</small>
-                <h3 class="fw-900 text-neon-red mb-1"><?= number_format($total_amine, 2) ?> DA</h3>
+                <h3 class="fw-900 text-neon-red mb-1"><span class="money-val"><?= number_format($total_amine, 2) ?> DA</span></h3>
                 <small class="text-white-50"><?= count(array_filter($all_expenses, fn($e) => $e['admin_name'] == 'Amine')) ?> décharges</small>
             </div>
         </div>
@@ -567,7 +609,7 @@ $margin_rate = $revenue['total'] > 0 ? ($gross_profit / $revenue['total']) * 100
             <div class="stat-card danger-card">
                 <i class="bi bi-person-x metric-icon text-neon-red"></i>
                 <small class="text-neon-red fw-bold d-block">DÉCH. YASSER</small>
-                <h3 class="fw-900 text-neon-red mb-1"><?= number_format($total_yasser, 2) ?> DA</h3>
+                <h3 class="fw-900 text-neon-red mb-1"><span class="money-val"><?= number_format($total_yasser, 2) ?> DA</span></h3>
                 <small class="text-white-50"><?= count(array_filter($all_expenses, fn($e) => $e['admin_name'] == 'Yasser')) ?> décharges</small>
             </div>
         </div>
@@ -590,7 +632,7 @@ $margin_rate = $revenue['total'] > 0 ? ($gross_profit / $revenue['total']) * 100
             <div class="stat-card text-center">
                 <i class="bi bi-truck metric-icon text-warning"></i>
                 <small class="text-warning fw-bold d-block">FRAIS LIVRAISON</small>
-                <h2 class="fw-900 text-white"><?= number_format($total_delivery, 2) ?> DA</h2>
+                <h2 class="fw-900 text-white"><span class="money-val"><?= number_format($total_delivery, 2) ?> DA</span></h2>
                 <small class="text-white-50"><?= $count_online ?> livraisons</small>
             </div>
         </div>
@@ -643,7 +685,7 @@ $margin_rate = $revenue['total'] > 0 ? ($gross_profit / $revenue['total']) * 100
                                 </td>
                                 <td><?= htmlspecialchars($ex['category']) ?></td>
                                 <td class="text-end">
-                                    <span class="fw-bold text-white"><?= number_format($ex['amount'], 2) ?> DA</span>
+                                    <span class="fw-bold text-white"><span class="money-val"><?= number_format($ex['amount'], 2) ?> DA</span></span>
                                 </td>
                             </tr>
                             <?php endforeach; ?>
@@ -686,7 +728,7 @@ $margin_rate = $revenue['total'] > 0 ? ($gross_profit / $revenue['total']) * 100
                 </div>
                 <div class="text-end">
                     <div class="text-neon-green fw-900" style="font-size: 1.5rem;">
-                        + <?= number_format($tp['total_profit'], 2) ?> DA
+                        + <span class="money-val"><?= number_format($tp['total_profit'], 2) ?> DA</span>
                     </div>
                 </div>
             </div>
@@ -710,6 +752,39 @@ $margin_rate = $revenue['total'] > 0 ? ($gross_profit / $revenue['total']) * 100
 
 <script>
     // Génération de particules flottantes
+    
+    // --- OBFUSCATION LOGIC ---
+    document.addEventListener('DOMContentLoaded', () => {
+        const btn = document.getElementById('toggleMoneyBtn');
+        const icon = document.getElementById('toggleMoneyIcon');
+        const text = document.getElementById('toggleMoneyText');
+
+        let isObfuscated = localStorage.getItem('hideMoney') === 'true';
+
+        function applyState() {
+            if (isObfuscated) {
+                document.body.classList.add('obfuscate-money');
+                icon.classList.remove('bi-eye-slash');
+                icon.classList.add('bi-eye');
+                text.innerText = "Afficher";
+            } else {
+                document.body.classList.remove('obfuscate-money');
+                icon.classList.remove('bi-eye');
+                icon.classList.add('bi-eye-slash');
+                text.innerText = "Masquer";
+            }
+        }
+
+        applyState();
+
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            isObfuscated = !isObfuscated;
+            localStorage.setItem('hideMoney', isObfuscated);
+            applyState();
+        });
+    });
+
     function createParticles() {
         const container = document.getElementById('particles');
         for(let i = 0; i < 50; i++) {

@@ -82,6 +82,8 @@ date_default_timezone_set('Africa/Algiers');
 // --- LOGIQUE MODIFICATION (RÉCUPÉRATION DES DONNÉES COMPLÈTES) ---
 $edit_data = null;
 $edit_products = [];
+$edit_total_delivery = 0;
+$edit_remise = 0;
 if(isset($_GET['edit_id'])) {
     $stmt = $pdo->prepare("SELECT * FROM orders_online WHERE id = ? LIMIT 1");
     $stmt->execute([(int)$_GET['edit_id']]);
@@ -89,13 +91,25 @@ if(isset($_GET['edit_id'])) {
     
     // Récupérer tous les produits de cette commande (même client, même date/heure)
     if($edit_data) {
-        $stmt_prods = $pdo->prepare("SELECT product_id, quantity FROM orders_online 
+        $stmt_prods = $pdo->prepare("SELECT product_id, quantity, product_price, delivery_price, total_amount FROM orders_online 
                                      WHERE customer_name = ? AND phone1 = ? 
                                      AND created_at = ? AND is_deleted = 0");
         $stmt_prods->execute([$edit_data['customer_name'], $edit_data['phone1'], $edit_data['created_at']]);
+        
+        $sum_products = 0;
+        $sum_delivery = 0;
+        $sum_total = 0;
+
         while($row = $stmt_prods->fetch(PDO::FETCH_ASSOC)) {
             $edit_products[] = ['id' => $row['product_id'], 'qty' => $row['quantity']];
+            $sum_products += ($row['product_price'] * $row['quantity']);
+            $sum_delivery += $row['delivery_price'];
+            $sum_total += $row['total_amount'];
         }
+
+        $edit_total_delivery = $sum_delivery;
+        // Remise = (Sous-total produits + Total livraison) - Total facturé
+        $edit_remise = ($sum_products + $sum_delivery) - $sum_total;
     }
 }
 
@@ -174,30 +188,25 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_order'])) {
         }
     }
 
-    // Calculer le total des produits et le nombre total d'articles
-    $total_products = 0;
+    // Calculer le nombre total d'articles
     $total_items = count($panier_items);
-    foreach($panier_items as $item) {
-        $p_stmt = $pdo->prepare("SELECT price FROM products WHERE id = ?");
-        $p_stmt->execute([(int)$item['product_id']]);
-        $prod = $p_stmt->fetch();
-        $total_products += ($prod['price'] * $item['quantity']);
-    }
     
-    // Calculer la remise par article proportionnellement
-    $remise_per_item = $total_items > 0 ? ($remise / $total_items) : 0;
-
     // Insérer les nouvelles lignes
-    foreach($panier_items as $item) {
+    foreach($panier_items as $index => $item) {
         $p_stmt = $pdo->prepare("SELECT price, description FROM products WHERE id = ?");
         $p_stmt->execute([(int)$item['product_id']]);
         $prod = $p_stmt->fetch();
         
-        $item_subtotal = ($prod['price'] * $item['quantity']);
-        $item_delivery = $deliv / $total_items;
-        $item_total = $item_subtotal + $item_delivery - $remise_per_item;
+        // On assigne tout le montant de livraison et remise au PREMIER article du panier
+        // Les autres articles auront 0. Cela simplifie la gestion et évite les chiffres à virgule croqués.
+        $item_delivery = ($index === 0) ? $deliv : 0;
+        $item_remise   = ($index === 0) ? $remise : 0;
 
-        $sql = "INSERT INTO orders_online (customer_name, phone1, phone2, wilaya_code, commune, address, product_id, quantity, product_price, delivery_price, total_amount, is_exchange, is_check, is_stopdesk, status, is_deleted, note, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?)";
+        $item_subtotal = ($prod['price'] * $item['quantity']);
+        $item_total = $item_subtotal + $item_delivery - $item_remise;
+
+        $product_cost = (float)$prod['description'];
+        $sql = "INSERT INTO orders_online (customer_name, phone1, phone2, wilaya_code, commune, address, product_id, quantity, product_price, product_cost, delivery_price, total_amount, is_exchange, is_check, is_stopdesk, status, is_deleted, note, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?)";
         $pdo->prepare($sql)->execute([
             $_POST['customer_name'], 
             $_POST['phone1'], 
@@ -208,6 +217,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['save_order'])) {
             $item['product_id'], 
             $item['quantity'], 
             $prod['price'], 
+            $product_cost, 
             $item_delivery, 
             $item_total, 
             $_POST['is_exchange']??'', 
@@ -234,7 +244,7 @@ $products = $pdo->query("SELECT * FROM products WHERE is_deleted = 0")->fetchAll
 $sql_fetch = "SELECT o.*, 
               GROUP_CONCAT(CONCAT(p.name, ' (', o.quantity, 'x)') SEPARATOR '<br>') as panier_html, 
               SUM(o.total_amount) as total_cmd, 
-              SUM((o.product_price - CAST(p.description AS DECIMAL(10,2))) * o.quantity) as gain_brut,
+              SUM(o.product_price - COALESCE(o.product_cost, CAST(p.description AS DECIMAL(10,2))) * o.quantity) as gain_brut,
               SUM(o.delivery_price) as total_delivery
               FROM orders_online o LEFT JOIN products p ON o.product_id = p.id 
               WHERE DATE(o.created_at) BETWEEN ? AND ? AND o.is_deleted = 0 
@@ -449,8 +459,8 @@ $wilayas = ["01" => "Adrar", "02" => "Chlef", "03" => "Laghouat", "04" => "Oum E
                     </div>
 
                     <div class="row g-2 mb-3">
-                        <div class="col-6"><label class="small opacity-50">Livr.</label><input type="number" name="delivery_price" id="delivery" class="form-control" value="<?= $edit_data['delivery_price'] ?? 0 ?>" oninput="calc()"></div>
-                        <div class="col-6"><label class="small opacity-50">Remise</label><input type="number" name="remise_price" id="remise" class="form-control" value="0" oninput="calc()"></div>
+                        <div class="col-6"><label class="small opacity-50">Livr.</label><input type="number" step="any" name="delivery_price" id="delivery" class="form-control" value="<?= $edit_data ? number_format($edit_total_delivery, 2, '.', '') : 0 ?>" oninput="calc()"></div>
+                        <div class="col-6"><label class="small opacity-50">Remise</label><input type="number" step="any" name="remise_price" id="remise" class="form-control" value="<?= $edit_data ? number_format($edit_remise, 2, '.', '') : 0 ?>" oninput="calc()"></div>
                     </div>
 
                     <h1 class="text-center text-info fw-900 my-3"><span id="finalTotal">0</span> DA</h1>
@@ -671,19 +681,24 @@ function searchGlobal() {
     });
 }
 
-function updateDelivery() {
+function updateDelivery(isInit = false) {
     let code = document.getElementById('wilayaSelect').value;
     const isStopdesk = document.getElementById('stopdeskCheck').checked;
     
-    // Utiliser les tarifs stopdesk si disponibles et cochés
-    if(isStopdesk && typeof stopdeskFees !== 'undefined' && stopdeskFees[code]) {
-        document.getElementById('delivery').value = stopdeskFees[code];
-    } else {
-        document.getElementById('delivery').value = deliveryFees[code] || 0;
+    // Ne pas écraser le prix de livraison lors du chargement initial d'une édition
+    const isEditing = <?= $edit_data ? 'true' : 'false' ?>;
+    if (!(isInit && isEditing)) {
+        if(isStopdesk && typeof stopdeskFees !== 'undefined' && stopdeskFees[code]) {
+            document.getElementById('delivery').value = stopdeskFees[code];
+        } else {
+            document.getElementById('delivery').value = deliveryFees[code] || 0;
+        }
     }
     
     let cSelect = document.getElementById('communeSelect');
-    let selectedCommune = cSelect.getAttribute('data-selected');
+    let currentVal = cSelect.value;
+    let selectedCommune = currentVal ? currentVal : cSelect.getAttribute('data-selected');
+    
     cSelect.innerHTML = '<option value=""></option>';
     let cleanCode = parseInt(code).toString(); 
     if (typeof communesParWilaya !== 'undefined' && communesParWilaya[cleanCode]) {
@@ -720,7 +735,7 @@ document.getElementById('orderForm').addEventListener('submit', function(e) {
 });
 
 window.onload = function() {
-    updateDelivery();
+    updateDelivery(true);
 };
 </script>
 </body>

@@ -12,29 +12,87 @@ $liste_a = $pdo->query("SELECT DISTINCT name FROM products")->fetchAll(PDO::FETC
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_to_cart'])) {
     $_SESSION['supplier_name'] = $_POST['fournisseur_nom'];
     $_SESSION['supplier_tel'] = $_POST['fournisseur_tel']; 
-    $item = ['name' => $_POST['article_nom'], 'p_unit' => (float)$_POST['prix_achat_unitaire'], 'qty' => (int)$_POST['quantite_achat'], 'total' => (float)$_POST['prix_achat_unitaire'] * (int)$_POST['quantite_achat']];
+
+    $item = [
+        'name' => $_POST['article_nom'], 
+        'p_unit' => (float)$_POST['prix_achat_unitaire'], 
+        'p_vente' => (float)$_POST['prix_vente_unitaire'], 
+        'qty' => (int)$_POST['quantite_achat'], 
+        'total' => (float)$_POST['prix_achat_unitaire'] * (int)$_POST['quantite_achat']
+    ];
+
     $_SESSION['supplier_cart'][] = $item;
+
+    // Si on éditait un article, on s'assure qu'on a fini l'édition
+    if (isset($_SESSION['edit_item'])) {
+        unset($_SESSION['edit_item']);
+    }
 }
+
+// EDIT / DELETE LOGIC
+if (isset($_GET['del_cart'])) {
+    $idx = (int)$_GET['del_cart'];
+    if (isset($_SESSION['supplier_cart'][$idx])) {
+        unset($_SESSION['supplier_cart'][$idx]);
+        $_SESSION['supplier_cart'] = array_values($_SESSION['supplier_cart']); // reindex
+    }
+    header("Location: caisse_fournisseur.php");
+    exit;
+}
+
+if (isset($_GET['edit_cart'])) {
+    $idx = (int)$_GET['edit_cart'];
+    if (isset($_SESSION['supplier_cart'][$idx])) {
+        $_SESSION['edit_item'] = $_SESSION['supplier_cart'][$idx];
+        unset($_SESSION['supplier_cart'][$idx]);
+        $_SESSION['supplier_cart'] = array_values($_SESSION['supplier_cart']);
+    }
+    header("Location: caisse_fournisseur.php");
+    exit;
+}
+
+$edit_item = $_SESSION['edit_item'] ?? null;
+
 
 if (isset($_GET['clear_cart'])) { $_SESSION['supplier_cart'] = []; unset($_SESSION['supplier_name'], $_SESSION['supplier_tel']); header("Location: caisse_fournisseur.php"); exit; }
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['validate_invoice'])) {
-    $fournisseur = $_SESSION['supplier_name']; $tel = $_SESSION['supplier_tel']; $paye_restant = (float)$_POST['montant_paye'];
+    $fournisseur = $_SESSION['supplier_name']; 
+    $tel = $_SESSION['supplier_tel']; 
+    $paye_restant = (float)$_POST['montant_paye'];
+
     foreach ($_SESSION['supplier_cart'] as $item) {
-        $versement = min($paye_restant, $item['total']); $statut = ($versement >= $item['total']) ? 'Payé' : 'Dette';
+        $versement = min($paye_restant, $item['total']); 
+        $statut = ($versement >= $item['total']) ? 'Payé' : 'Dette';
+
+        // 1. ADD TO FOURNISSEUR ACHATS
         $pdo->prepare("INSERT INTO fournisseur_achats (fournisseur_nom, fournisseur_tel, article_nom, prix_achat_unitaire, quantite, montant_total, montant_paye, statut) VALUES (?,?,?,?,?,?,?,?)")->execute([$fournisseur, $tel, $item['name'], $item['p_unit'], $item['qty'], $item['total'], $versement, $statut]);
         $paye_restant = max(0, $paye_restant - $item['total']);
+
+        // 2. AUTOMATICALLY ADD TO STOCK
+        $nom = $item['name']; 
+        $p_v = $item['p_vente']; 
+        $qty = $item['qty']; 
+        $p_a = $item['p_unit'];
+
+        $check = $pdo->prepare("SELECT id, stock FROM products WHERE name = ?"); 
+        $check->execute([$nom]); 
+        $existing = $check->fetch();
+
+        if ($existing) { 
+            $new_s = $existing['stock'] + $qty; 
+            $pdo->prepare("UPDATE products SET price=?, stock=?, description=? WHERE id=?")->execute([$p_v, $new_s, $p_a, $existing['id']]); 
+        } else { 
+            $pdo->prepare("INSERT INTO products (name, price, stock, image, description) VALUES (?,?,?,?,?)")->execute([$nom, $p_v, $qty, 'default.png', $p_a]); 
+        }
     }
-    $_SESSION['supplier_cart'] = []; unset($_SESSION['supplier_name'], $_SESSION['supplier_tel']); header("Location: caisse_fournisseur.php?success=1"); exit;
+
+    $_SESSION['supplier_cart'] = []; 
+    unset($_SESSION['supplier_name'], $_SESSION['supplier_tel']); 
+    header("Location: caisse_fournisseur.php?success=facture_validee"); 
+    exit;
 }
 
-if (isset($_POST['transfer_to_inv'])) {
-    $nom = $_POST['inv_name']; $p_v = $_POST['inv_price_sale']; $qty = (int)$_POST['inv_qty']; $p_a = $_POST['inv_price_buy'];
-    $check = $pdo->prepare("SELECT id, stock FROM products WHERE name = ?"); $check->execute([$nom]); $existing = $check->fetch();
-    if ($existing) { $new_s = $existing['stock'] + $qty; $pdo->prepare("UPDATE products SET price=?, stock=?, description=? WHERE id=?")->execute([$p_v, $new_s, $p_a, $existing['id']]); }
-    else { $pdo->prepare("INSERT INTO products (name, price, stock, image, description) VALUES (?,?,?,?,?)")->execute([$nom, $p_v, $qty, 'default.png', $p_a]); }
-    header("Location: products.php?success=1"); exit;
-}
 
 if (isset($_POST['update_purchase'])) {
     $id = $_POST['edit_id']; $qty = (int)$_POST['edit_qty']; $pu = (float)$_POST['edit_p_unit']; $paye = (float)$_POST['edit_paye']; $tot = $qty * $pu; $stat = ($paye >= $tot) ? 'Payé' : 'Dette';
@@ -75,6 +133,18 @@ $historique->execute([$date_s, $date_e]); $achats = $historique->fetchAll(PDO::F
 <body class="p-4">
 
 <div class="container no-print">
+
+    <?php if(isset($_GET['success']) && $_GET['success'] === 'facture_validee'): ?>
+        <div class="alert alert-success alert-dismissible fade show fw-bold" role="alert">
+            Facture validée avec succès — articles ajoutés au stock !
+            <button type="button" class="btn-close btn-close-black" data-bs-dismiss="alert"></button>
+        </div>
+    <?php elseif(isset($_GET['updated'])): ?>
+        <div class="alert alert-info alert-dismissible fade show fw-bold" role="alert">
+            Achat mis à jour avec succès.
+            <button type="button" class="btn-close btn-close-black" data-bs-dismiss="alert"></button>
+        </div>
+    <?php endif; ?>
     <div class="d-flex justify-content-between mb-4">
         <h3><i class="bi bi-truck text-warning"></i> Caisse Fournisseur</h3>
         <a href="products.php" class="btn btn-outline-light btn-sm">Stock</a>
@@ -84,48 +154,78 @@ $historique->execute([$date_s, $date_e]); $achats = $historique->fetchAll(PDO::F
         <div class="col-md-5">
             <div class="glass-card shadow">
                 <form method="POST">
-                    <div class="mb-3">
-                        <label class="small text-info fw-bold">FOURNISSEUR (Sélectionner ou Taper)</label>
-                        <select name="fournisseur_nom" class="form-control select2-tags" required>
-                            <option value=""><?= $_SESSION['supplier_name'] ?? 'Choisir...' ?></option>
-                            <?php foreach($liste_f as $f): ?>
-                                <option value="<?= htmlspecialchars($f) ?>"><?= htmlspecialchars($f) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label class="small">Téléphone</label>
-                        <input type="text" name="fournisseur_tel" class="form-control" value="<?= $_SESSION['supplier_tel'] ?? '' ?>">
-                    </div>
-                    <div class="mb-3">
-                        <label class="small text-info fw-bold">ARTICLE (Sélectionner ou Taper)</label>
-                        <select name="article_nom" class="form-control select2-tags" required>
-                            <option value="">Choisir l'article...</option>
-                            <?php foreach($liste_a as $a): ?>
-                                <option value="<?= htmlspecialchars($a) ?>"><?= htmlspecialchars($a) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="row g-2">
-                        <div class="col-6"><label class="small">P.A Unit</label><input type="number" step="0.01" name="prix_achat_unitaire" class="form-control" required></div>
-                        <div class="col-6"><label class="small">Qté</label><input type="number" name="quantite_achat" class="form-control" value="1" required></div>
-                    </div>
-                    <button type="submit" name="add_to_cart" class="btn btn-warning w-100 mt-3 fw-bold">AJOUTER AU PANIER</button>
-                </form>
+        <div class="mb-3">
+            <label class="small text-info fw-bold">FOURNISSEUR (Sélectionner ou Taper)</label>
+            <select name="fournisseur_nom" class="form-control select2-tags" required>
+                <?php $s_name = $_SESSION['supplier_name'] ?? ''; ?>
+                <option value="<?= htmlspecialchars($s_name) ?>" selected><?= $s_name ? htmlspecialchars($s_name) : 'Choisir...' ?></option>
+                <?php foreach($liste_f as $f): ?>
+                    <?php if($f !== $s_name): ?>
+                        <option value="<?= htmlspecialchars($f) ?>"><?= htmlspecialchars($f) ?></option>
+                    <?php endif; ?>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div class="mb-3">
+            <label class="small">Téléphone</label>
+            <input type="text" name="fournisseur_tel" class="form-control" value="<?= htmlspecialchars($_SESSION['supplier_tel'] ?? '') ?>">
+        </div>
+        <div class="mb-3">
+            <label class="small text-info fw-bold">ARTICLE (Sélectionner ou Taper)</label>
+            <select name="article_nom" class="form-control select2-tags" required>
+                <?php $e_name = $edit_item ? $edit_item['name'] : ''; ?>
+                <option value="<?= htmlspecialchars($e_name) ?>" selected><?= $e_name ? htmlspecialchars($e_name) : "Choisir l'article..." ?></option>
+                <?php foreach($liste_a as $a): ?>
+                    <?php if($a !== $e_name): ?>
+                        <option value="<?= htmlspecialchars($a) ?>"><?= htmlspecialchars($a) ?></option>
+                    <?php endif; ?>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div class="row g-2 mb-2">
+            <div class="col-6">
+                <label class="small">P.A Unit</label>
+                <input type="number" step="0.01" name="prix_achat_unitaire" class="form-control" value="<?= $edit_item ? $edit_item['p_unit'] : '' ?>" required>
+            </div>
+            <div class="col-6">
+                <label class="small">Prix Vente</label>
+                <input type="number" step="0.01" name="prix_vente_unitaire" class="form-control" value="<?= $edit_item ? ($edit_item['p_vente'] ?? '') : '' ?>" required>
+            </div>
+        </div>
+        <div class="row g-2">
+            <div class="col-12">
+                <label class="small">Qté</label>
+                <input type="number" name="quantite_achat" class="form-control" value="<?= $edit_item ? $edit_item['qty'] : '1' ?>" required>
+            </div>
+        </div>
+        <button type="submit" name="add_to_cart" class="btn btn-warning w-100 mt-3 fw-bold">
+            <?= $edit_item ? "METTRE À JOUR (AJOUTER)" : "AJOUTER AU PANIER" ?>
+        </button>
+    </form>
             </div>
         </div>
 
         <div class="col-md-7">
             <div class="glass-card shadow">
                 <h5 class="text-info">Panier Actuel : <?= $_SESSION['supplier_name'] ?? '' ?></h5>
-                <table class="table table-sm mt-3">
-                    <thead><tr><th>Article</th><th>Qté</th><th>Total</th></tr></thead>
-                    <tbody>
-                        <?php $gt = 0; foreach($_SESSION['supplier_cart'] as $i): $gt += $i['total']; ?>
-                        <tr><td><?= htmlspecialchars($i['name']) ?></td><td><?= $i['qty'] ?></td><td><?= number_format($i['total'], 2) ?></td></tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+                <table class="table table-dark table-sm mt-3">
+        <thead><tr><th>Article</th><th>Qté</th><th>P.A</th><th>P.V</th><th>Total</th><th>Action</th></tr></thead>
+        <tbody>
+            <?php $gt = 0; foreach($_SESSION['supplier_cart'] as $k => $i): $gt += $i['total']; ?>
+            <tr>
+                <td><?= htmlspecialchars($i['name']) ?></td>
+                <td><?= $i['qty'] ?></td>
+                <td><?= number_format($i['p_unit'], 2) ?></td>
+                <td><?= number_format($i['p_vente'] ?? 0, 2) ?></td>
+                <td><?= number_format($i['total'], 2) ?></td>
+                <td class="text-end">
+                    <a href="?edit_cart=<?= $k ?>" class="btn btn-sm btn-outline-info px-2 py-0" title="Modifier"><i class="bi bi-pencil"></i></a>
+                    <a href="?del_cart=<?= $k ?>" class="btn btn-sm btn-outline-danger px-2 py-0" title="Supprimer"><i class="bi bi-trash"></i></a>
+                </td>
+            </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
                 <div class="text-end h5 text-primary">Total : <?= number_format($gt, 2) ?> DZD</div>
                 <form method="POST" class="mt-3">
                     <input type="number" step="0.01" name="montant_paye" class="form-control mb-2" placeholder="Montant versé" required>
@@ -156,7 +256,7 @@ $historique->execute([$date_s, $date_e]); $achats = $historique->fetchAll(PDO::F
                     <td><span class="badge <?= $h['statut']=='Payé'?'bg-success':'bg-danger' ?>"><?= $h['statut'] ?></span></td>
                     <td>
                         <button class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#edit<?= $h['id'] ?>"><i class="bi bi-pencil"></i></button>
-                        <button class="btn btn-sm btn-info text-white" data-bs-toggle="modal" data-bs-target="#inv<?= $h['id'] ?>"><i class="bi bi-box"></i></button>
+                        
                         <button onclick='printGroupedInvoice("<?= $h['fournisseur_nom'] ?>")' class="btn btn-sm btn-light"><i class="bi bi-printer"></i></button>
                         <a href="?delete=<?= $h['id'] ?>" class="btn btn-sm btn-danger"><i class="bi bi-trash"></i></a>
                     </td>
@@ -173,16 +273,7 @@ $historique->execute([$date_s, $date_e]); $achats = $historique->fetchAll(PDO::F
                     </div></form></div></div>
                 </div>
 
-                <div class="modal fade" id="inv<?= $h['id'] ?>" tabindex="-1">
-                  <div class="modal-dialog modal-sm text-dark"><div class="modal-content"><form method="POST"><div class="modal-body">
-                    <input type="hidden" name="inv_name" value="<?= $h['article_nom'] ?>">
-                    <input type="hidden" name="inv_price_buy" value="<?= $h['prix_achat_unitaire'] ?>">
-                    <input type="hidden" name="inv_qty" value="<?= $h['quantite'] ?>">
-                    <label>Prix de Vente :</label><input type="number" step="0.01" name="inv_price_sale" class="form-control mb-2" required>
-                    <button type="submit" name="transfer_to_inv" class="btn btn-primary w-100">Envoyer au Stock</button>
-                  </div></form></div></div>
-                </div>
-                <?php endforeach; ?>
+                                <?php endforeach; ?>
             </tbody>
         </table>
     </div>

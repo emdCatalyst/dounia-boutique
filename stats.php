@@ -10,7 +10,7 @@ $end_date   = $_GET['end_date'] ?? date('Y-m-d');
 
 // Online Sales : On exclut les retours, les supprimés et on retire la livraison du CA
 $stmt = $pdo->prepare("SELECT SUM(total_amount - delivery_price) as total, 
-                               SUM((product_price - CAST(p.description AS DECIMAL(10,2))) * o.quantity) as profit 
+                               SUM((product_price - COALESCE(o.product_cost, CAST(p.description AS DECIMAL(10,2)))) * o.quantity) as profit
                        FROM orders_online o 
                        LEFT JOIN products p ON o.product_id = p.id 
                        WHERE DATE(o.created_at) BETWEEN ? AND ?
@@ -21,7 +21,7 @@ $online = $stmt->fetch();
 
 // Boutique Sales : On exclut les supprimés
 $stmt = $pdo->prepare("SELECT SUM(total_amount) as total, 
-                               SUM((sell_price - CAST(p.description AS DECIMAL(10,2))) * s.quantity) as profit 
+                              SUM((sell_price - COALESCE(s.product_cost, CAST(p.description AS DECIMAL(10,2)))) * s.quantity) as profit 
                        FROM sales_boutique s 
                        LEFT JOIN products p ON s.product_id = p.id 
                        WHERE DATE(s.created_at) BETWEEN ? AND ?
