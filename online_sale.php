@@ -142,13 +142,31 @@ if (isset($_GET['cancel_return'])) {
 
 if (isset($_GET['delete_sale'])) {
     $id = (int)$_GET['delete_sale'];
-    $stmt = $pdo->prepare("SELECT product_id, quantity, status FROM orders_online WHERE id = ?");
+    
+    // Récupérer les infos de la commande pour identifier le groupe
+    $stmt = $pdo->prepare("SELECT customer_name, phone1, created_at FROM orders_online WHERE id = ?");
     $stmt->execute([$id]);
-    $order = $stmt->fetch(PDO::FETCH_ASSOC);
-    if ($order && $order['status'] !== 'RETOUR') {
-        $pdo->prepare("UPDATE products SET stock = stock + ? WHERE id = ?")->execute([$order['quantity'], $order['product_id']]);
+    $group = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if ($group) {
+        // Récupérer toutes les lignes de ce groupe pour recréditer le stock
+        $stmt_lines = $pdo->prepare("SELECT product_id, quantity, status FROM orders_online 
+                                     WHERE customer_name = ? AND phone1 = ? AND created_at = ? AND is_deleted = 0");
+        $stmt_lines->execute([$group['customer_name'], $group['phone1'], $group['created_at']]);
+        $lines = $stmt_lines->fetchAll();
+        
+        foreach ($lines as $line) {
+            if ($line['status'] !== 'RETOUR') {
+                $pdo->prepare("UPDATE products SET stock = stock + ? WHERE id = ?")->execute([$line['quantity'], $line['product_id']]);
+            }
+        }
+        
+        // Marquer tout le groupe comme supprimé
+        $pdo->prepare("UPDATE orders_online SET is_deleted = 1 
+                       WHERE customer_name = ? AND phone1 = ? AND created_at = ?")
+            ->execute([$group['customer_name'], $group['phone1'], $group['created_at']]);
     }
-    $pdo->prepare("UPDATE orders_online SET is_deleted = 1 WHERE id = ?")->execute([$id]);
+    
     header("Location: online_sale.php");
     exit;
 }

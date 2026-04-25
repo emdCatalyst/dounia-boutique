@@ -12,7 +12,33 @@ if (isset($_GET['restore_type']) && isset($_GET['id'])) {
     // Liste blanche des tables autorisées pour la sécurité
     $allowed_tables = ['orders_online', 'products', 'expenses'];
     if (in_array($table, $allowed_tables)) {
-        $pdo->prepare("UPDATE $table SET is_deleted = 0 WHERE id = ?")->execute([$id]);
+        if ($table === 'orders_online') {
+            // Identifier le groupe
+            $stmt = $pdo->prepare("SELECT customer_name, phone1, created_at FROM orders_online WHERE id = ?");
+            $stmt->execute([$id]);
+            $group = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($group) {
+                // Récupérer les lignes à restaurer pour déduire le stock
+                $stmt_lines = $pdo->prepare("SELECT product_id, quantity, status FROM orders_online 
+                                             WHERE customer_name = ? AND phone1 = ? AND created_at = ? AND is_deleted = 1");
+                $stmt_lines->execute([$group['customer_name'], $group['phone1'], $group['created_at']]);
+                $lines = $stmt_lines->fetchAll();
+                
+                foreach ($lines as $line) {
+                    if ($line['status'] !== 'RETOUR') {
+                        $pdo->prepare("UPDATE products SET stock = stock - ? WHERE id = ?")->execute([$line['quantity'], $line['product_id']]);
+                    }
+                }
+                
+                // Restaurer tout le groupe
+                $pdo->prepare("UPDATE orders_online SET is_deleted = 0 
+                               WHERE customer_name = ? AND phone1 = ? AND created_at = ?")
+                    ->execute([$group['customer_name'], $group['phone1'], $group['created_at']]);
+            }
+        } else {
+            $pdo->prepare("UPDATE $table SET is_deleted = 0 WHERE id = ?")->execute([$id]);
+        }
     }
     header("Location: corbeille.php?restored=1");
     exit;
@@ -25,14 +51,32 @@ if (isset($_GET['force_delete_type']) && isset($_GET['id'])) {
     
     $allowed_tables = ['orders_online', 'products', 'expenses'];
     if (in_array($table, $allowed_tables)) {
-        $pdo->prepare("DELETE FROM $table WHERE id = ?")->execute([$id]);
+        if ($table === 'orders_online') {
+            // Identifier le groupe
+            $stmt = $pdo->prepare("SELECT customer_name, phone1, created_at FROM orders_online WHERE id = ?");
+            $stmt->execute([$id]);
+            $group = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($group) {
+                $pdo->prepare("DELETE FROM orders_online WHERE customer_name = ? AND phone1 = ? AND created_at = ?")
+                    ->execute([$group['customer_name'], $group['phone1'], $group['created_at']]);
+            }
+        } else {
+            $pdo->prepare("DELETE FROM $table WHERE id = ?")->execute([$id]);
+        }
     }
     header("Location: corbeille.php?purged=1");
     exit;
 }
 
 // Récupération des éléments supprimés
-$deleted_orders = $pdo->query("SELECT * FROM orders_online WHERE is_deleted = 1 ORDER BY id DESC")->fetchAll(PDO::FETCH_ASSOC);
+$deleted_orders = $pdo->query("SELECT o.*, 
+                               GROUP_CONCAT(CONCAT(p.name, ' (', o.quantity, 'x)') SEPARATOR '<br>') as panier_html,
+                               SUM(o.total_amount) as total_cmd
+                               FROM orders_online o LEFT JOIN products p ON o.product_id = p.id 
+                               WHERE o.is_deleted = 1 
+                               GROUP BY o.customer_name, o.phone1, o.created_at
+                               ORDER BY o.id DESC")->fetchAll(PDO::FETCH_ASSOC);
 $deleted_products = $pdo->query("SELECT * FROM products WHERE is_deleted = 1 ORDER BY id DESC")->fetchAll(PDO::FETCH_ASSOC);
 $deleted_expenses = $pdo->query("SELECT * FROM expenses WHERE is_deleted = 1 ORDER BY id DESC")->fetchAll(PDO::FETCH_ASSOC);
 ?>
@@ -74,22 +118,26 @@ $deleted_expenses = $pdo->query("SELECT * FROM expenses WHERE is_deleted = 1 ORD
             <table class="table align-middle">
                 <thead>
                     <tr class="text-white-50 small">
+                        <th>Date</th>
                         <th>Client</th>
-                        <th>Montant</th>
+                        <th>Panier</th>
+                        <th>Montant Total</th>
                         <th class="text-end">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php foreach($deleted_orders as $o): ?>
                     <tr>
+                        <td><small><?= date('d/m/Y H:i', strtotime($o['created_at'])) ?></small></td>
                         <td><strong><?= htmlspecialchars($o['customer_name']) ?></strong><br><small><?= $o['phone1'] ?></small></td>
-                        <td><?= number_format($o['total_amount'], 2) ?> DA</td>
+                        <td><div class="small opacity-75"><?= $o['panier_html'] ?></div></td>
+                        <td class="fw-bold text-info"><?= number_format($o['total_cmd'], 2) ?> DA</td>
                         <td class="text-end">
                             <a href="?restore_type=orders_online&id=<?= $o['id'] ?>" class="btn-restore me-2"><i class="bi bi-arrow-counterclockwise"></i> Restaurer</a>
                             <a href="?force_delete_type=orders_online&id=<?= $o['id'] ?>" class="btn-purge" onclick="return confirm('Supprimer définitivement cette commande ?')"><i class="bi bi-x-circle"></i> Purger</a>
                         </td>
                     </tr>
-                    <?php endforeach; if(empty($deleted_orders)) echo "<tr><td colspan='3' class='text-center opacity-50 py-4'>Aucune commande ici</td></tr>"; ?>
+                    <?php endforeach; if(empty($deleted_orders)) echo "<tr><td colspan='5' class='text-center opacity-50 py-4'>Aucune commande ici</td></tr>"; ?>
                 </tbody>
             </table>
         </div>
