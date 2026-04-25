@@ -364,17 +364,55 @@ $wilayas = ["01" => "Adrar", "02" => "Chlef", "03" => "Laghouat", "04" => "Oum E
             color: #000000 !important;
             font-weight: 600 !important;
         }
+
+        /* --- OBFUSCATION CSS --- */
+        body.obfuscate-money .money-val {
+            filter: blur(20px);
+            user-select: none;
+            pointer-events: none;
+            opacity: 0.8;
+            transition: filter 0.3s ease, opacity 0.3s ease;
+        }
+        .money-val {
+            transition: filter 0.3s ease, opacity 0.3s ease;
+            display: inline-block;
+        }
+        .obfuscate-btn {
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            color: white;
+            border-radius: 50px;
+            padding: 8px 20px;
+            transition: all 0.3s ease;
+            font-family: 'Lexend', sans-serif;
+            font-size: 0.9rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+        }
+        .obfuscate-btn:hover {
+            background: rgba(15, 23, 42, 0.9);
+            border-color: #38bdf8;
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.4);
+            color: white;
+        }
     </style>
 </head>
 <body class="p-4">
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2 class="fw-900 text-info">Commandes Online</h2>
-        <div>
-            <a href="blacklist_manage.php" class="btn btn-manage-returns rounded-pill px-4 me-2">
+        <div class="d-flex align-items-center gap-2">
+            <!-- Bouton Obfuscation -->
+            <button id="toggleMoneyBtn" class="obfuscate-btn shadow-lg me-2">
+                <i class="bi bi-eye-slash" id="toggleMoneyIcon"></i> <span id="toggleMoneyText">Masquer</span>
+            </button>
+            <a href="blacklist_manage.php" class="btn btn-manage-returns rounded-pill px-4">
                 <i class="bi bi-arrow-repeat"></i> Gestion des Retours
             </a>
-            <a href="corbeille.php" class="btn btn-secondary rounded-pill px-4 me-2">
+            <a href="corbeille.php" class="btn btn-secondary rounded-pill px-4">
                 <i class="bi bi-trash"></i> Corbeille
             </a>
             <a href="dashboard.php" class="btn btn-outline-light rounded-pill px-4">
@@ -529,7 +567,7 @@ $wilayas = ["01" => "Adrar", "02" => "Chlef", "03" => "Laghouat", "04" => "Oum E
                                 <td><div class="panier-client"><?= $s['panier_html'] ?></div></td>
                                 <td class="small opacity-75"><?= $s['note'] ?></td>
                                 <td class="fw-bold"><?= number_format($s['total_cmd'], 0) ?> DA</td>
-                                <td class="text-info fw-bold"><?= $isR ? '0' : number_format($s['gain_total'], 0) ?> DA</td>
+                                <td class="text-info fw-bold"><?= $isR ? '0' : '<span class="money-val">'.number_format($s['gain_total'], 0).'</span>' ?> DA</td>
                                 <td>
                                     <div class="btn-group">
                                         <a href="?edit_id=<?= $s['id'] ?>&start_date=<?= $start_date ?>&end_date=<?= $end_date ?>" class="btn btn-sm btn-outline-info" title="Modifier"><i class="bi bi-pencil"></i></a>
@@ -548,8 +586,8 @@ $wilayas = ["01" => "Adrar", "02" => "Chlef", "03" => "Laghouat", "04" => "Oum E
                 </div>
 
                 <div class="row g-3 mt-4 text-center">
-                    <div class="col-6"><div class="p-3 bg-dark rounded-4 border border-success border-opacity-25 text-success"><strong>PROFIT:</strong> <?= number_format($prof_v, 2) ?> DA</div></div>
-                    <div class="col-6"><div class="p-3 bg-dark rounded-4 border border-info border-opacity-25 text-info"><strong>CA NET (SANS LIVR):</strong> <?= number_format($tot_v, 2) ?> DA</div></div>
+                    <div class="col-6"><div class="p-3 bg-dark rounded-4 border border-success border-opacity-25 text-success"><strong>PROFIT:</strong> <span class="money-val"><?= number_format($prof_v, 2) ?></span> DA</div></div>
+                    <div class="col-6"><div class="p-3 bg-dark rounded-4 border border-info border-opacity-25 text-info"><strong>CA NET (SANS LIVR):</strong> <span class="money-val"><?= number_format($tot_v, 2) ?></span> DA</div></div>
                 </div>
             </div>
         </div>
@@ -561,6 +599,38 @@ $wilayas = ["01" => "Adrar", "02" => "Chlef", "03" => "Laghouat", "04" => "Oum E
 <script src="assets/communes.js?v=<?= time(); ?>"></script>
 <script src="assets/stopdesk_fees.js?v=<?= time(); ?>"></script>
 <script>
+// --- OBFUSCATION LOGIC ---
+document.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('toggleMoneyBtn');
+    const icon = document.getElementById('toggleMoneyIcon');
+    const text = document.getElementById('toggleMoneyText');
+
+    let isObfuscated = localStorage.getItem('hideMoney') === 'true';
+
+    function applyState() {
+        if (isObfuscated) {
+            document.body.classList.add('obfuscate-money');
+            icon.classList.remove('bi-eye-slash');
+            icon.classList.add('bi-eye');
+            text.innerText = "Afficher";
+        } else {
+            document.body.classList.remove('obfuscate-money');
+            icon.classList.remove('bi-eye');
+            icon.classList.add('bi-eye-slash');
+            text.innerText = "Masquer";
+        }
+    }
+
+    applyState();
+
+    btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        isObfuscated = !isObfuscated;
+        localStorage.setItem('hideMoney', isObfuscated);
+        applyState();
+    });
+});
+
 const deliveryFees = {"01": 1100, "02": 700, "03": 900, "04": 650, "05": 700, "06": 700, "07": 900, "08": 1100, "09": 500, "10": 700, "11": 1300, "12": 700, "13": 800, "14": 800, "15": 700, "16": 500, "17": 900, "18": 600, "19": 700, "20": 800, "21": 600, "22": 700, "23": 700, "24": 600, "25": 500, "26": 700, "27": 700, "28": 800, "29": 700, "30": 900, "31": 800, "32": 800, "33": 1300, "34": 700, "35": 700, "36": 700, "37": 1300, "38": 800, "39": 900, "40": 700, "41": 700, "42": 700, "43": 600, "44": 700, "45": 800, "46": 800, "47": 1000, "48": 700, "49": 1100, "50": 700, "51": 900, "52": 1100, "53": 1300, "55": 900, "57": 900, "58": 1100};
 
 let panier = [];
