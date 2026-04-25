@@ -15,7 +15,7 @@ $is_today = ($date_start === date('Y-m-d') && $date_end === date('Y-m-d'));
 // 2. FONCTION POUR CALCULER LE CHIFFRE D'AFFAIRES (CA) - SANS LES FRAIS DE LIVRAISON
 function getRevenue($pdo, $start, $end) {
     // CA Boutique
-    $sqlB = "SELECT SUM(total_amount) FROM sales_boutique WHERE DATE(sale_date) BETWEEN ? AND ?";
+    $sqlB = "SELECT SUM(total_amount) FROM sales_boutique WHERE DATE(created_at) BETWEEN ? AND ?";
     $stmtB = $pdo->prepare($sqlB);
     $stmtB->execute([$start, $end]);
     $ca_boutique = $stmtB->fetchColumn() ?: 0;
@@ -39,15 +39,15 @@ function getRevenue($pdo, $start, $end) {
 // 3. FONCTION POUR CALCULER LE PROFIT BRUT (Marge)
 function getGrossProfit($pdo, $start, $end) {
     // Profit Boutique
-    $sqlB = "SELECT SUM(s.total_amount - (CAST(p.description AS DECIMAL(10,2)) * s.quantity)) 
+    $sqlB = "SELECT SUM(s.total_amount - (COALESCE(s.product_cost, CAST(p.description AS DECIMAL(10,2))) * s.quantity)) 
              FROM sales_boutique s JOIN products p ON s.product_id = p.id 
-             WHERE DATE(s.sale_date) BETWEEN ? AND ?";
+             WHERE DATE(s.created_at) BETWEEN ? AND ?";
     $stmtB = $pdo->prepare($sqlB);
     $stmtB->execute([$start, $end]);
     $profit_boutique = $stmtB->fetchColumn() ?: 0;
     
     // Profit Online (SANS livraison, SANS retours, AVEC déduction de la remise)
-    $sqlO = "SELECT SUM(s.total_amount - s.delivery_price - (CAST(p.description AS DECIMAL(10,2)) * s.quantity)) 
+    $sqlO = "SELECT SUM(s.total_amount - s.delivery_price - (COALESCE(s.product_cost, CAST(p.description AS DECIMAL(10,2))) * s.quantity)) 
              FROM orders_online s JOIN products p ON s.product_id = p.id 
              WHERE DATE(s.created_at) BETWEEN ? AND ? 
              AND (s.status != 'RETOUR' OR s.status IS NULL) 
@@ -101,11 +101,11 @@ $net_total_boutique = $gross_profit - ($total_magasin + $total_amine + $total_ya
 // 7. TOP PRODUITS (Exclut les retours et inclut la remise)
 $top_sql = "
     SELECT name, SUM(profit_net) as total_profit, SUM(qte) as total_qty FROM (
-        SELECT p.name, SUM(s.total_amount - (CAST(p.description AS DECIMAL(10,2)) * s.quantity)) as profit_net, SUM(s.quantity) as qte
+        SELECT p.name, SUM(s.total_amount - (COALESCE(s.product_cost, CAST(p.description AS DECIMAL(10,2))) * s.quantity)) as profit_net, SUM(s.quantity) as qte
         FROM sales_boutique s JOIN products p ON s.product_id = p.id 
-        WHERE DATE(s.sale_date) BETWEEN ? AND ? GROUP BY p.id
+        WHERE DATE(s.created_at) BETWEEN ? AND ? GROUP BY p.id
         UNION ALL
-        SELECT p.name, SUM(s.total_amount - s.delivery_price - (CAST(p.description AS DECIMAL(10,2)) * s.quantity)) as profit_net, SUM(s.quantity) as qte
+        SELECT p.name, SUM(s.total_amount - s.delivery_price - (COALESCE(s.product_cost, CAST(p.description AS DECIMAL(10,2))) * s.quantity)) as profit_net, SUM(s.quantity) as qte
         FROM orders_online s JOIN products p ON s.product_id = p.id 
         WHERE DATE(s.created_at) BETWEEN ? AND ? 
         AND (s.status != 'RETOUR' OR s.status IS NULL) 
@@ -118,7 +118,7 @@ $stmtTop->execute([$date_start, $date_end, $date_start, $date_end]);
 $top_products = $stmtTop->fetchAll(PDO::FETCH_ASSOC);
 
 // 8. COMPTAGE DES VENTES (Exclut les retours)
-$stmtCountB = $pdo->prepare("SELECT COUNT(*) FROM sales_boutique WHERE DATE(sale_date) BETWEEN ? AND ?");
+$stmtCountB = $pdo->prepare("SELECT COUNT(*) FROM sales_boutique WHERE DATE(created_at) BETWEEN ? AND ?");
 $stmtCountB->execute([$date_start, $date_end]);
 $count_boutique = $stmtCountB->fetchColumn();
 

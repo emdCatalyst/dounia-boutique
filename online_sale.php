@@ -244,7 +244,7 @@ $products = $pdo->query("SELECT * FROM products WHERE is_deleted = 0")->fetchAll
 $sql_fetch = "SELECT o.*, 
               GROUP_CONCAT(CONCAT(p.name, ' (', o.quantity, 'x)') SEPARATOR '<br>') as panier_html, 
               SUM(o.total_amount) as total_cmd, 
-              SUM(o.product_price - COALESCE(o.product_cost, CAST(p.description AS DECIMAL(10,2))) * o.quantity) as gain_brut,
+              SUM((o.product_price - COALESCE(o.product_cost, CAST(p.description AS DECIMAL(10,2)))) * o.quantity) as gain_brut,
               SUM(o.delivery_price) as total_delivery
               FROM orders_online o LEFT JOIN products p ON o.product_id = p.id 
               WHERE DATE(o.created_at) BETWEEN ? AND ? AND o.is_deleted = 0 
