@@ -1,2 +1,5 @@
 /uploads
 .aider.chat.history.md
+vendor
+composer.lock
+composer.phar

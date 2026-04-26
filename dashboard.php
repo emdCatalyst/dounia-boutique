@@ -215,7 +215,7 @@ try {
                 <a href="sales_choice.php" class="nav-link"><i class="bi bi-bag-heart"></i> Ventes</a>
                 <a href="caisse_fournisseur.php" class="nav-link"><i class="bi bi-truck-flatbed"></i> Fournisseurs</a>
                 <a href="expenses.php" class="nav-link"><i class="bi bi-wallet2"></i> Décharges</a>
-                <a href="stats.php" class="nav-link"><i class="bi bi-calendar3"></i> Historique</a>
+                <a href="historique.php" class="nav-link"><i class="bi bi-clock-history"></i> Historique</a>
                 
                 <a href="profit_analytics.php" class="nav-link premium">
                     <i class="bi bi-stars"></i> ANALYTICS PRO

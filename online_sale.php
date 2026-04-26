@@ -1,37 +1,25 @@
 <?php
-// --- 1. EXPORTATION EXCEL (FORMAT OPTIMISÉ .XLS - OUVERTURE DIRECTE) ---
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
+
+// --- 1. EXPORTATION EXCEL (PHP SPREADSHEET - TEMPLATE XLSX) ---
 if (isset($_GET['export'])) {
+    require_once 'vendor/autoload.php';
     require_once 'config/database.php';
+
     $start = $_GET['start_date'] ?? date('Y-m-d');
     $end = $_GET['end_date'] ?? date('Y-m-d');
     
-    header('Content-Type: application/vnd.ms-excel; charset=utf-8');
-    header('Content-Disposition: attachment; filename=ecotrack_export_'.date('Y-m-d').'.xls');
-    
-    echo "\xEF\xBB\xBF"; // UTF-8 BOM pour Excel
-    echo '<table border="1">';
-    echo '<tr>';
-    echo '<th style="background-color:#00f2ff">reference commande</th>';
-    echo '<th style="background-color:#00f2ff">nom et prenom du destinataire*</th>';
-    echo '<th style="background-color:#00f2ff">telephone*</th>';
-    echo '<th style="background-color:#00f2ff">telephone 2</th>';
-    echo '<th style="background-color:#00f2ff">code wilaya*</th>';
-    echo '<th style="background-color:#00f2ff">wilaya de livraison</th>';
-    echo '<th style="background-color:#00f2ff">commune de livraison*</th>';
-    echo '<th style="background-color:#00f2ff">adresse de livraison*</th>';
-    echo '<th style="background-color:#00f2ff">produit*</th>';
-    echo '<th style="background-color:#00f2ff">poids (kg)</th>';
-    echo '<th style="background-color:#00f2ff">montant du colis*</th>';
-    echo '<th style="background-color:#00f2ff">remarque</th>';
-    echo '<th style="background-color:#00f2ff">FRAGILE&#10;( si oui mettez OUI sinon laissez vide )</th>';
-    echo '<th style="background-color:#00f2ff">ESSAYAGE PERMI&#10;( si oui mettez OUI, sinon laissez vide )</th>';
-    echo '<th style="background-color:#00f2ff">ECHANGE&#10;( si oui mettez OUI sinon laissez vide )</th>';
-    echo '<th style="background-color:#00f2ff">PICK UP&#10;( si oui mettez OUI sinon laissez vide )</th>';
-    echo '<th style="background-color:#00f2ff">RECOUVREMENT&#10;( si oui mettez OUI sinon laissez vide )</th>';
-    echo '<th style="background-color:#00f2ff">STOP DESK&#10;( si oui mettez OUI sinon laissez vide )</th>';
-    echo '<th style="background-color:#00f2ff">Lien map</th>';
-    echo '</tr>';
-    
+    $templatePath = 'assets/upload_ecotrack_v3.xlsx';
+    if (!file_exists($templatePath)) {
+        die("Erreur: Le template Excel est introuvable dans assets/");
+    }
+
+    // Charger le template
+    $spreadsheet = IOFactory::load($templatePath);
+    $sheet = $spreadsheet->getActiveSheet();
+
     $sql = "SELECT o.*, 
             GROUP_CONCAT(CONCAT(p.name, ' (', o.quantity, 'x)') SEPARATOR ' + ') as all_products,
             SUM(o.total_amount) as total_commande
@@ -46,30 +34,57 @@ if (isset($_GET['export'])) {
 
     $wilayas = ["01" => "Adrar", "02" => "Chlef", "03" => "Laghouat", "04" => "Oum El Bouaghi", "05" => "Batna", "06" => "Béjaïa", "07" => "Biskra", "08" => "Béchar", "09" => "Blida", "10" => "Bouira", "11" => "Tamanrasset", "12" => "Tébessa", "13" => "Tlemcen", "14" => "Tiaret", "15" => "Tizi Ouzou", "16" => "Alger", "17" => "Djelfa", "18" => "Jijel", "19" => "Sétif", "20" => "Saïda", "21" => "Skikda", "22" => "Sidi Bel Abbès", "23" => "Annaba", "24" => "Guelma", "25" => "Constantine", "26" => "Médéa", "27" => "Mostaganem", "28" => "M'Sila", "29" => "Mascara", "30" => "Ouargla", "31" => "Oran", "32" => "El Bayadh", "33" => "Illizi", "34" => "Bordj Bou Arreridj", "35" => "Boumerdès", "36" => "El Tarf", "37" => "Tindouf", "38" => "Tissemsilt", "39" => "El Oued", "40" => "Khenchela", "41" => "Souk Ahras", "42" => "Tipaza", "43" => "Mila", "44" => "Aïn Defla", "45" => "Naâma", "46" => "Aïn Témouchent", "47" => "Ghardaïa", "48" => "Relizane", "49" => "Timimoun", "50" => "Bordj Badji Mokhtar", "51" => "Ouled Djellal", "52" => "Béni Abbès", "53" => "In Salah", "54" => "In Guezzam", "55" => "Touggourt", "56" => "Djanet", "57" => "El M'Ghair", "58" => "El Meniaa"];
 
-    while($r = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        echo '<tr>';
-        echo '<td>'.$r['id'].'</td>';
-        echo '<td>'.$r['customer_name'].'</td>';
-        echo '<td style="mso-number-format:\@;">'.$r['phone1'].'</td>';
-        echo '<td style="mso-number-format:\@;">'.($r['phone2'] ?: '').'</td>';
-        echo '<td>'.$r['wilaya_code'].'</td>';
-        echo '<td>'.($wilayas[$r['wilaya_code']] ?? '').'</td>';
-        echo '<td>'.$r['commune'].'</td>';
-        echo '<td>'.$r['address'].'</td>';
-        echo '<td>'.$r['all_products'].'</td>';
-        echo '<td></td>';
-        echo '<td>'.$r['total_commande'].'</td>';
-        echo '<td>'.$r['note'].'</td>';
-        echo '<td></td>';
-        echo '<td>'.($r['is_check'] == 'OUI' ? 'OUI' : '').'</td>';
-        echo '<td>'.($r['is_exchange'] == 'OUI' ? 'OUI' : '').'</td>';
-        echo '<td></td>';
-        echo '<td></td>';
-        echo '<td>'.($r['is_stopdesk'] == 'OUI' ? 'OUI' : '').'</td>';
-        echo '<td></td>';
-        echo '</tr>';
+    $row = 2; // On commence après l'entête du template
+    while ($r = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $sheet->setCellValue('A' . $row, $r['id']);
+        $sheet->setCellValue('B' . $row, $r['customer_name']);
+        
+        // Forcer le format texte pour les téléphones et codes wilaya
+        $sheet->setCellValueExplicit('C' . $row, $r['phone1'], \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+        $sheet->setCellValueExplicit('D' . $row, $r['phone2'] ?: '', \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+        $sheet->setCellValueExplicit('E' . $row, $r['wilaya_code'], \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+        
+        $sheet->setCellValue('F' . $row, $wilayas[$r['wilaya_code']] ?? '');
+        $sheet->setCellValue('G' . $row, $r['commune']);
+        $sheet->setCellValue('H' . $row, $r['address']);
+        $sheet->setCellValue('I' . $row, $r['all_products']);
+        $sheet->setCellValue('J' . $row, ''); // Poids
+        $sheet->setCellValue('K' . $row, $r['total_commande']);
+        $sheet->setCellValue('L' . $row, $r['note']);
+        $sheet->setCellValue('M' . $row, ''); // Fragile
+        $sheet->setCellValue('N' . $row, ($r['is_check'] == 'OUI' ? 'OUI' : '')); // Essayage Permi
+        $sheet->setCellValue('O' . $row, ($r['is_exchange'] == 'OUI' ? 'OUI' : '')); // Echange
+        $sheet->setCellValue('P' . $row, ''); // Pick Up
+        $sheet->setCellValue('Q' . $row, ''); // Recouvrement
+        $sheet->setCellValue('R' . $row, ($r['is_stopdesk'] == 'OUI' ? 'OUI' : '')); // Stop Desk
+        $sheet->setCellValue('S' . $row, ''); // Lien map
+
+        $row++;
     }
-    echo '</table>';
+
+    // Appliquer Calibri 12pt à toutes les données injectées (de A2 jusqu'à la fin)
+    if ($row > 2) {
+        $styleArray = [
+            'font' => [
+                'name' => 'Calibri',
+                'size' => 12,
+            ],
+            'borders' => [
+                'allBorders' => [
+                    'borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN,
+                ],
+            ],
+        ];
+        $sheet->getStyle('A2:S' . ($row - 1))->applyFromArray($styleArray);
+    }
+
+    // Sortie vers le navigateur
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment; filename="export_ecotrack_'.date('Y-m-d').'.xlsx"');
+    header('Cache-Control: max-age=0');
+
+    $writer = new Xlsx($spreadsheet);
+    $writer->save('php://output');
     exit;
 }
 
